@@ -1,5 +1,7 @@
 -module(radix).
 
+-include_lib("eqc/include/eqc.hrl").
+
 -compile(export_all).
 
 -record(tree, {value :: maybe(),
@@ -38,3 +40,33 @@ store([H | T], Value, Tree=#tree{children=Children}) ->
     Tree#tree{children=orddict:store(H,
                                      NewSubTree,
                                      Children)}.
+
+-spec to_list(tree()) -> [{string(), term()}].
+to_list(Tree) ->
+    lists:flatten(to_list("", Tree)).
+
+to_list(Prefix, #tree{value={ok, Value},
+                      children=Children}) ->
+    [{Prefix, Value}] ++ [to_list(Prefix ++ [C], V) || {C, V} <- Children];
+to_list(Prefix, #tree{value=error,
+                      children=Children}) ->
+    [to_list(Prefix ++ [C], V) || {C, V} <- Children].
+
+
+%% Testing
+
+test() ->
+    eqc:quickcheck(prop_to_list()).
+
+input_list() ->
+    list({list(int()), int()}).
+
+prop_to_list() ->
+    ?FORALL(Xs, input_list(),
+            to_list(insert_list(Xs)) =:= orddict:from_list(Xs)).
+
+insert_list(L) ->
+    lists:foldl(fun insert_fun/2, empty(), L).
+
+insert_fun({Key, Value}, Acc) ->
+    store(Key, Value, Acc).
