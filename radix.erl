@@ -249,7 +249,11 @@ prop_to_list() ->
             to_list_equiv_to_orddict(Xs)).
 
 to_list_equiv_to_orddict(Xs) ->
-    to_list(from_list(Xs)) =:= orddict:from_list(Xs).
+    FromList = from_list(Xs),
+    conjunction([{equiv_to_orddict,
+                  to_list(FromList) =:= orddict:from_list(Xs)},
+                 {no_single_children,
+                  no_single_children_except_root(FromList)}]).
 
 insert_fun({Key, Value}, Acc) ->
     store(Key, Value, Acc).
@@ -273,7 +277,10 @@ prop_find() ->
 find_equiv_to_orddict(Xs, Element) ->
     Radix = from_list(Xs),
     Orddict = orddict:from_list(Xs),
-    find(Element, Radix) =:= orddict:find(Element, Orddict).
+    conjunction([{equiv_to_orddict,
+                  find(Element, Radix) =:= orddict:find(Element, Orddict)},
+                 {no_single_children,
+                  no_single_children_except_root(Radix)}]).
 
 from_list(L) ->
     lists:foldl(fun insert_fun/2, empty(), L).
@@ -290,9 +297,27 @@ erase_equiv_to_orddict(Xs, Element) ->
 
     DeletedRadix = erase(Element, Radix),
     DeletedOrddict = orddict:erase(Element, Orddict),
-    to_list(DeletedRadix) =:= orddict:to_list(DeletedOrddict).
+    conjunction([{equiv_to_orddict,
+                  to_list(DeletedRadix) =:= orddict:to_list(DeletedOrddict)},
+                 {no_single_children,
+                  no_single_children_except_root(DeletedRadix)}]).
 
+%% @doc hmm, does this actually test the whole tree?
+no_single_children_except_root(#tree{children=Children}) ->
+    SingleChildComplement = fun (X) -> not single_child(X) end,
+    lists:all(SingleChildComplement, Children).
 
-%% TODO:
-%% write a `verify_tree' function that will check for nodes with only one child,
-%% etc
+%% ---------------------------------------------------------------------------
+
+read_lines(IODevice) ->
+    read_lines(IODevice, []).
+
+read_lines(IODevice, Acc) ->
+    case file:read_line(IODevice) of
+        {ok, Data} ->
+            read_lines(IODevice, [Data | Acc]);
+        eof ->
+            lists:reverse(Acc);
+        Else ->
+            Else
+    end.
