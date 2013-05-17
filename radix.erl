@@ -16,6 +16,50 @@ empty() ->
     #tree{value=nothing,
           children=[]}.
 
+-spec erase(list(), tree()) -> tree().
+erase("", Tree) ->
+    Tree#tree{value=nothing};
+erase(Key, Tree=#tree{children=Children}) ->
+    case orddict:find(Key, Children) of
+        {ok, Child} ->
+            NewChildren = case Child#tree.children of
+                [] ->
+                    orddict:erase(Key, Children);
+                _Else ->
+                    NewChild = Child#tree{value=nothing},
+                    orddict:store(Key, NewChild, Children)
+            end,
+            Tree#tree{children=NewChildren};
+        error ->
+            case find_prefix(Key, Children) of
+                {ok, {Prefix, Child}} ->
+                    TailKey = lists:nthtail(length(Prefix), Key),
+                    NewChild = erase(TailKey, Child),
+                    case single_child(NewChild) of
+                        true ->
+                            {ChildKey, {just, ChildValue}} = singleton_kv(NewChild),
+                            NewChildren = orddict:erase(Prefix, Children),
+                            store(Prefix ++ ChildKey, ChildValue,
+                                  Tree#tree{children=NewChildren});
+                        false ->
+                            NewChildren = orddict:store(Prefix, NewChild, Children),
+                            Tree#tree{children=NewChildren}
+                    end;
+                error ->
+                    %% not found
+                    Tree
+            end
+    end.
+
+single_child(#tree{value=nothing,
+                   children=[{_Key, Child}]}) ->
+    single_child(Child);
+single_child(_Tree) ->
+    false.
+
+singleton_kv(#tree{children=[{Key, Child}]}) ->
+    {Key, Child#tree.value}.
+
 -spec find(string(), tree()) -> maybe().
 find([], #tree{value={just, Value}}) ->
     {ok, Value};
@@ -186,10 +230,11 @@ test() ->
 
 test(NumTimes) ->
     eqc:quickcheck(eqc:numtests(NumTimes, prop_to_list())),
-    eqc:quickcheck(eqc:numtests(NumTimes, prop_find())).
+    eqc:quickcheck(eqc:numtests(NumTimes, prop_erase())),
+    eqc:quickcheck(eqc:numtests(NumTimes, prop_to_list())).
 
 ascii() ->
-    choose(97, 107).
+    choose(97, 100).
 
 ascii_list() ->
     ?LET({A, B}, {list(ascii()), list(ascii())}, A ++ B).
@@ -232,3 +277,22 @@ find_equiv_to_orddict(Xs, Element) ->
 
 from_list(L) ->
     lists:foldl(fun insert_fun/2, empty(), L).
+
+%% ---------------------------------------------------------------------------
+
+prop_erase() ->
+    ?FORALL({Xs, Element}, list_and_element(),
+            erase_equiv_to_orddict(Xs, Element)).
+
+erase_equiv_to_orddict(Xs, Element) ->
+    Radix = from_list(Xs),
+    Orddict = orddict:from_list(Xs),
+
+    DeletedRadix = erase(Element, Radix),
+    DeletedOrddict = orddict:erase(Element, Orddict),
+    to_list(DeletedRadix) =:= orddict:to_list(DeletedOrddict).
+
+
+%% TODO:
+%% write a `verify_tree' function that will check for nodes with only one child,
+%% etc
