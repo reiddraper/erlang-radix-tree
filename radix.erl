@@ -83,34 +83,40 @@ handle_insert(Tree=#tree{children=Children}, String, Value, ChildKey, OldTree) -
     Tree#tree{children=NewChildren}.
 
 -spec handle_split(tree(), list(), term(), list(), tree()) -> tree().
-handle_split(Tree=#tree{children=Children}, String, Value, ChildKey, OldTree) ->
+handle_split(Tree, String, Value, ChildKey, OldTree) ->
     SplitKey = common_prefix(String, ChildKey),
     InputTail = lists:nthtail(length(SplitKey), String),
     case InputTail of
         "" ->
-            ChildKeyTail = lists:nthtail(length(SplitKey), ChildKey),
-            SplitTree = #tree{value={just, Value},
-                              children=[{ChildKeyTail,
-                                         OldTree}]},
-            DeletedKeyChildren = orddict:erase(ChildKey,
-                                               Children),
-            SplitKeyChildren = orddict:store(SplitKey,
-                                             SplitTree,
-                                             DeletedKeyChildren),
-            Tree#tree{children=SplitKeyChildren};
+            handle_split_is_exact(Tree, SplitKey, ChildKey, Value, OldTree);
         _Else ->
-            ChildKeyTail = lists:nthtail(length(SplitKey), ChildKey),
-            ChildList = [{ChildKeyTail, OldTree},
-                         {InputTail, #tree{value={just, Value}}}],
-            NewChildren = orddict:from_list(ChildList),
-            NewIntermediaryTree = #tree{children=NewChildren},
-            DeletedKeyChildren = orddict:erase(ChildKey,
-                                               Children),
-            SplitKeyChildren = orddict:store(SplitKey,
-                                             NewIntermediaryTree,
-                                             DeletedKeyChildren),
-            Tree#tree{children=SplitKeyChildren}
+            handle_split_prefix(Tree, SplitKey, ChildKey, Value, OldTree, InputTail)
     end.
+
+handle_split_is_exact(Tree=#tree{children=Children}, SplitKey, ChildKey, Value, OldTree) ->
+    ChildKeyTail = lists:nthtail(length(SplitKey), ChildKey),
+    SplitTree = #tree{value={just, Value},
+                      children=[{ChildKeyTail,
+                                 OldTree}]},
+    DeletedKeyChildren = orddict:erase(ChildKey,
+                                       Children),
+    SplitKeyChildren = orddict:store(SplitKey,
+                                     SplitTree,
+                                     DeletedKeyChildren),
+    Tree#tree{children=SplitKeyChildren}.
+
+handle_split_prefix(Tree=#tree{children=Children}, SplitKey, ChildKey, Value, OldTree, InputTail) ->
+    ChildKeyTail = lists:nthtail(length(SplitKey), ChildKey),
+    ChildList = [{ChildKeyTail, OldTree},
+                 {InputTail, #tree{value={just, Value}}}],
+    NewChildren = orddict:from_list(ChildList),
+    NewIntermediaryTree = #tree{children=NewChildren},
+    DeletedKeyChildren = orddict:erase(ChildKey,
+                                       Children),
+    SplitKeyChildren = orddict:store(SplitKey,
+                                     NewIntermediaryTree,
+                                     DeletedKeyChildren),
+    Tree#tree{children=SplitKeyChildren}.
 
 -spec handle_nothing(tree(), list(), term()) -> tree().
 handle_nothing(Tree=#tree{children=Children}, String, Value) ->
@@ -127,19 +133,21 @@ find_split_helper(String) ->
                 true ->
                     {insert, {Key, Value}};
                 false ->
-                    case common_prefix(String, Key) =/= [] of
-                        true ->
-                            {split, {Key, Value}};
-                        false ->
-                            Acc
-                    end
+                    maybe_common_prefix(String, Key, Value, Acc)
             end
+    end.
+
+maybe_common_prefix(String, Key, Value, Acc) ->
+    case common_prefix(String, Key) =/= [] of
+        true ->
+            {split, {Key, Value}};
+        false ->
+            Acc
     end.
 
 -spec common_prefix(list(A), list(A)) -> list(A).
 common_prefix(A, B) ->
     common_prefix(A, B, []).
-
 
 -spec common_prefix(list(A), list(A), list(A)) -> list(A).
 common_prefix([], _B, Acc) ->
