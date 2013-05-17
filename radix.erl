@@ -64,48 +64,59 @@ handle_exact_match(String, Value, Tree=#tree{children=Children}, Child) ->
     NewChildren = orddict:store(String, NewChild, Children),
     Tree#tree{children=NewChildren}.
 
+-spec handle_no_exact_match(string(), term(), tree()) -> tree().
 handle_no_exact_match(String, Value, Tree=#tree{children=Children}) ->
     case find_splittable(String, Children) of
         {insert, {ChildKey, OldTree}} ->
-            Tail = lists:nthtail(length(ChildKey), String),
-            ChildTree = store(Tail, Value, OldTree),
-            NewChildren = orddict:store(ChildKey, ChildTree, Children),
-            Tree#tree{children=NewChildren};
+            handle_insert(Tree, String, Value, ChildKey, OldTree);
         {split, {ChildKey, OldTree}} ->
-            SplitKey = common_prefix(String, ChildKey),
-            %%io:format("SplitKey is ~p~n", [SplitKey]),
-            InputTail = lists:nthtail(length(SplitKey), String),
-            %%io:format("InputTail is ~p~n", [InputTail]),
-            case InputTail of
-                "" ->
-                    ChildKeyTail = lists:nthtail(length(SplitKey), ChildKey),
-                    SplitTree = #tree{value={just, Value},
-                                      children=[{ChildKeyTail,
-                                                 OldTree}]},
-                    DeletedKeyChildren = orddict:erase(ChildKey,
-                                                       Children),
-                    SplitKeyChildren = orddict:store(SplitKey,
-                                                     SplitTree,
-                                                     DeletedKeyChildren),
-                    Tree#tree{children=SplitKeyChildren};
-                _Else ->
-                    ChildKeyTail = lists:nthtail(length(SplitKey), ChildKey),
-                    ChildList = [{ChildKeyTail, OldTree},
-                                 {InputTail, #tree{value={just, Value}}}],
-                    NewChildren = orddict:from_list(ChildList),
-                    NewIntermediaryTree = #tree{children=NewChildren},
-                    DeletedKeyChildren = orddict:erase(ChildKey,
-                                                       Children),
-                    SplitKeyChildren = orddict:store(SplitKey,
-                                                     NewIntermediaryTree,
-                                                     DeletedKeyChildren),
-                    Tree#tree{children=SplitKeyChildren}
-            end;
+            handle_split(Tree, String, Value, ChildKey, OldTree);
         nothing ->
-            ValueTree = #tree{value={just, Value}},
-            NewChildren = orddict:store(String, ValueTree, Children),
-            Tree#tree{children=NewChildren}
+            handle_nothing(Tree, String, Value)
     end.
+
+-spec handle_insert(tree(), list(), term(), list(), tree()) -> tree().
+handle_insert(Tree=#tree{children=Children}, String, Value, ChildKey, OldTree) ->
+    Tail = lists:nthtail(length(ChildKey), String),
+    ChildTree = store(Tail, Value, OldTree),
+    NewChildren = orddict:store(ChildKey, ChildTree, Children),
+    Tree#tree{children=NewChildren}.
+
+-spec handle_split(tree(), list(), term(), list(), tree()) -> tree().
+handle_split(Tree=#tree{children=Children}, String, Value, ChildKey, OldTree) ->
+    SplitKey = common_prefix(String, ChildKey),
+    InputTail = lists:nthtail(length(SplitKey), String),
+    case InputTail of
+        "" ->
+            ChildKeyTail = lists:nthtail(length(SplitKey), ChildKey),
+            SplitTree = #tree{value={just, Value},
+                              children=[{ChildKeyTail,
+                                         OldTree}]},
+            DeletedKeyChildren = orddict:erase(ChildKey,
+                                               Children),
+            SplitKeyChildren = orddict:store(SplitKey,
+                                             SplitTree,
+                                             DeletedKeyChildren),
+            Tree#tree{children=SplitKeyChildren};
+        _Else ->
+            ChildKeyTail = lists:nthtail(length(SplitKey), ChildKey),
+            ChildList = [{ChildKeyTail, OldTree},
+                         {InputTail, #tree{value={just, Value}}}],
+            NewChildren = orddict:from_list(ChildList),
+            NewIntermediaryTree = #tree{children=NewChildren},
+            DeletedKeyChildren = orddict:erase(ChildKey,
+                                               Children),
+            SplitKeyChildren = orddict:store(SplitKey,
+                                             NewIntermediaryTree,
+                                             DeletedKeyChildren),
+            Tree#tree{children=SplitKeyChildren}
+    end.
+
+-spec handle_nothing(tree(), list(), term()) -> tree().
+handle_nothing(Tree=#tree{children=Children}, String, Value) ->
+    ValueTree = #tree{value={just, Value}},
+    NewChildren = orddict:store(String, ValueTree, Children),
+    Tree#tree{children=NewChildren}.
 
 find_splittable(String, Children) ->
     orddict:fold(find_split_helper(String), nothing, Children).
