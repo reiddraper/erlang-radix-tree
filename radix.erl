@@ -17,25 +17,27 @@ empty() ->
           children=[]}.
 
 -spec find(string(), tree()) -> maybe().
-find([], #tree{value=Value}) ->
-    Value;
+find([], #tree{value={just, Value}}) ->
+    {ok, Value};
+find([], #tree{value=nothing}) ->
+    error;
 find(String, #tree{children=Children}) ->
     case find_prefix(String, Children) of
-        {just, {Prefix, Tree}} ->
+        {ok, {Prefix, Tree}} ->
             Tail = lists:nthtail(length(Prefix), String),
             find(Tail, Tree);
-        nothing ->
-            nothing
+        error ->
+            error
     end.
 
 find_prefix(String, Orddict) ->
-    orddict:fold(find_prefix_helper(String), nothing, Orddict).
+    orddict:fold(find_prefix_helper(String), error, Orddict).
 
 find_prefix_helper(String) ->
     fun(Key, Value, Acc) ->
             case lists:prefix(Key, String) of
                 true ->
-                    {just, {Key, Value}};
+                    {ok, {Key, Value}};
                 false ->
                     Acc
             end
@@ -157,23 +159,50 @@ test() ->
     test(1000).
 
 test(NumTimes) ->
-    eqc:quickcheck(eqc:numtests(NumTimes, prop_to_list())).
+    eqc:quickcheck(eqc:numtests(NumTimes, prop_to_list())),
+    eqc:quickcheck(eqc:numtests(NumTimes, prop_find())).
 
 ascii() ->
     choose(97, 107).
 
+ascii_list() ->
+    ?LET({A, B}, {list(ascii()), list(ascii())}, A ++ B).
+
 input_list() ->
-    resize(256, list({list(ascii()), int()})).
+    list({ascii_list(), int()}).
+
+%% ---------------------------------------------------------------------------
 
 prop_to_list() ->
     ?FORALL(Xs, input_list(),
-            equiv_to_orddict(Xs)).
+            to_list_equiv_to_orddict(Xs)).
 
-equiv_to_orddict(Xs) ->
+to_list_equiv_to_orddict(Xs) ->
     to_list(from_list(Xs)) =:= orddict:from_list(Xs).
-
-from_list(L) ->
-    lists:foldl(fun insert_fun/2, empty(), L).
 
 insert_fun({Key, Value}, Acc) ->
     store(Key, Value, Acc).
+
+%% ---------------------------------------------------------------------------
+
+list_and_element() ->
+    ?LET(InputList, input_list(),
+         {InputList, element_or_random(InputList)}).
+
+element_or_random([]) ->
+    list(ascii());
+element_or_random(InputList) ->
+    frequency([{4, elements([K || {K, _V} <- InputList])},
+               {1, list(ascii())}]).
+
+prop_find() ->
+    ?FORALL({Xs, Element}, list_and_element(),
+            find_equiv_to_orddict(Xs, Element)).
+
+find_equiv_to_orddict(Xs, Element) ->
+    Radix = from_list(Xs),
+    Orddict = orddict:from_list(Xs),
+    find(Element, Radix) =:= orddict:find(Element, Orddict).
+
+from_list(L) ->
+    lists:foldl(fun insert_fun/2, empty(), L).
